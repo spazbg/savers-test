@@ -26,22 +26,24 @@ function getCookies(tabId, callback) {
     chrome.tabs.sendMessage(tabId, {action: 'getCookies'}, callback);
 }
 
-// Handle cookie copying - VERSION 24: Clear localStorage before copying
 async function handleCopy() {
     try {
-        const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const cookieValues = await new Promise((resolve) => getCookies(tab.id, resolve));
 
-        // *** VERSION 24 - CLEAR LOCAL STORAGE BEFORE COPYING COOKIES ***
-        console.log("VERSION 24: Clearing localStorage before copying cookies...");
-        localStorage.clear(); // Clear local storage before setting new cookies
-        console.log("VERSION 24: localStorage cleared.");
-        // *** END VERSION 24 - CLEAR LOCAL STORAGE BEFORE COPYING COOKIES ***
-
-
         if (cookieValues.acs_ngn && cookieValues.cpn) {
-            localStorage.setItem('acs_ngn', cookieValues.acs_ngn);
-            localStorage.setItem('cpn', cookieValues.cpn);
+            // Store cookies in chrome.storage.local
+            await chrome.storage.local.set({
+                acs_ngn: cookieValues.acs_ngn,
+                cpn: cookieValues.cpn
+            });
+
+            // Log the cookies being stored
+            console.log("Cookies stored in chrome.storage.local:");
+            console.log("acs_ngn:", cookieValues.acs_ngn);
+            console.log("cpn:", cookieValues.cpn);
+
+            // Show the popup with copied cookies
             showCookiePopup(cookieValues.acs_ngn, cookieValues.cpn);
             buttonFeedback(copyButton);
         } else {
@@ -53,10 +55,10 @@ async function handleCopy() {
     }
 }
 
-// Entitlement Check Handler - VERSION 39: Final Version - Back to Fetch, User Instruction Alert
 async function handleCheckEntitlement() {
-    const checkButton = document.getElementById('checkEntitlement'); // CORRECT VARIABLE DEFINITION
-    buttonFeedback(checkButton); // MODIFIED: Passing checkButton here
+    const checkButton = document.getElementById('checkEntitlement');
+    buttonFeedback(checkButton);
+
     try {
         const checkboxes = document.querySelectorAll('.env-checkbox:checked');
         if (checkboxes.length === 0) {
@@ -68,75 +70,48 @@ async function handleCheckEntitlement() {
         alert("For best results, click 'Copy Cookie' button first before 'Check Entitlement'."); // VERSION 36 - User instruction alert (KEPT)
         // *** END VERSION 36 - USER INSTRUCTION ALERT (KEPT) ***
 
-
-        // Get cookies from localStorage
-        const acs_ngn_value = localStorage.getItem('acs_ngn');
-        const cpn_value = localStorage.getItem('cpn'); // Still retrieve cpn from local storage (though might not use it)
-
-        const apiDomainURL_Prod = 'https://main-graphql.newsapis.co.uk';
-        const apiDomainURL_UAT = 'https://main-graphql.dev.newsapis.co.uk';
-        const apiDomainURL_Staging = 'https://main-graphql.staging.newsapis.co.uk';
-        let currentApiDomainURL = apiDomainURL_Prod;
-        let targetDomainForCookies = "newsapis.co.uk";
-
-
-        if (checkboxes[1] && checkboxes[1].checked) { // Check if UAT checkbox is checked (index 1)
-            currentApiDomainURL = apiDomainURL_UAT;
-            targetDomainForCookies = "dev.newsapis.co.uk";
-            // *** VERSION 25 - CORRECTED LOGIC: UAT Domain and URL (KEPT) ***
-            console.log("UAT Environment Selected. Setting targetDomainForCookies to:", targetDomainForCookies, "and currentApiDomainURL to:", currentApiDomainURL); // VERSION 25 - Corrected Log (KEPT)
-            // *** END VERSION 25 - CORRECTED LOGIC: UAT Domain and URL (KEPT) ***
-        } else if (checkboxes[2] && checkboxes[2].checked) { // Check if Staging checkbox is checked (index 2)
-            currentApiDomainURL = apiDomainURL_Staging;
-            targetDomainForCookies = "staging.newsapis.co.uk";
-            // *** VERSION 25 - CORRECTED LOGIC: Staging Domain and URL (KEPT) ***
-            console.log("Staging Environment Selected. Setting targetDomainForCookies to:", targetDomainForCookies, "and currentApiDomainURL to:", currentApiDomainURL); // VERSION 25 - Corrected Log (KEPT)
-            // *** END VERSION 25 - CORRECTED LOGIC: Staging Domain and URL (KEPT) ***
-        } else { // PROD environment
-            currentApiDomainURL = apiDomainURL_Prod;
-            targetDomainForCookies = "newsapis.co.uk";
-             // *** VERSION 36 - PROD: SEND ONLY ACS_NGN COOKIE (KEPT) ***
-            console.log("Prod Environment Selected. Setting targetDomainForCookies to:", targetDomainForCookies, "and currentApiDomainURL to:", currentApiDomainURL + " - SENDING ACS_NGN ONLY"); // VERSION 36 - Log message (KEPT)
-            // *** END VERSION 36 - PROD: SEND ONLY ACS_NGN COOKIE (KEPT) ***
-             // *** VERSION 25 - CORRECTED LOGIC: Prod Domain and URL (KEPT) ***
-            console.log("Prod Environment Selected. Setting targetDomainForCookies to:", targetDomainForCookies, "and currentApiDomainURL to:", currentApiDomainURL); // VERSION 25 - Corrected Log (KEPT)
-            // *** END VERSION 25 - CORRECTED LOGIC: Prod Domain and URL (KEPT) ***
-        }
-
-
-        if (!acs_ngn_value) { // VERSION 17 - Check only for acs_ngn (KEPT)
-            alert('Required cookie not found (acs_ngn). Please copy cookies first.'); // VERSION 17 - Updated alert message (KEPT)
+        // Get cookies from chrome.storage.local
+        const { acs_ngn: acs_ngn_value } = await chrome.storage.local.get('acs_ngn'); // VERSION 57 - Get acs_ngn from chrome.storage.local (KEPT)
+        if (!acs_ngn_value) { // VERSION 57 - Check only for acs_ngn (KEPT)
+            alert('Required cookie not found (acs_ngn). Please copy cookies first.'); // VERSION 57 - Updated alert message (KEPT)
             return;
         }
-
-        // *** VERSION 36 - PROGRAMMATICALLY SET COOKIE (ACS_NGN ONLY for PROD) (KEPT) ***
-        console.log("Attempting to set cookie programmatically for Entitlement Check (acs_ngn ONLY for PROD)..."); // VERSION 36 - Updated Log Message (KEPT)
-        await chrome.cookies.set({ url: currentApiDomainURL + "/graphql", name: 'acs_ngn', value: acs_ngn_value, domain: `.${targetDomainForCookies}`, path: '/', secure: true, httpOnly: true }); // VERSION 36 - Setting acs_ngn cookie ONLY (KEPT)
-        // await chrome.cookies.set({ url: currentApiDomainURL + "/graphql", name: 'cpn', value: cpn_value, domain: `.${targetDomainForCookies}`, path: '/', secure: true, httpOnly: true }); // VERSION 36 - CPN cookie setting REMOVED for PROD (KEPT)
-        console.log("Cookies set programmatically for Entitlement Check (attempted - acs_ngn ONLY for PROD)."); // VERSION 36 - Updated Log Message (KEPT)
-        // *** END VERSION 36 - PROGRAMMATICALLY SET COOKIE (ACS_NGN ONLY for PROD) (KEPT) ***
-
-        // *** VERSION 26 - INTRODUCE DELAY BEFORE FETCH (KEPT) ***
-        const delayMilliseconds = 500; // Adjust delay time as needed
-        console.log(`VERSION 26: Delaying fetch by ${delayMilliseconds}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMilliseconds)); // Introduce delay
-        console.log("VERSION 26: Delay completed. Proceeding with fetch.");
-        // *** END VERSION 26 - INTRODUCE DELAY BEFORE FETCH (KEPT) ***
-
-
-        // Debug cookie value
-        alert(`Using cookie:\nacs_ngn=${acs_ngn_value}`); // VERSION 31 - Updated Alert message (KEPT)
 
         const results = [];
         for (const checkbox of checkboxes) {
             const url = checkbox.dataset.url;
-            const cookieHeaderValue = `acs_ngn=${acs_ngn_value}`; // VERSION 36 - Send ONLY acs_ngn in header for PROD (KEPT)
+            const envName = checkbox.parentElement.textContent.trim(); // VERSION 41 - Fixed envName extraction (KEPT)
+            const domain = new URL(url).hostname;
 
-            const fetchOptions = { // Define fetch options
+            // *** VERSION 40 - CORRECTED ENVIRONMENT SELECTION LOGIC (KEPT) ***
+            console.log(`${envName} Environment Selected. Setting targetDomainForCookies to: ${domain} and currentApiDomainURL to: ${url}`); // VERSION 40 - Corrected Log (KEPT)
+            // *** END VERSION 40 - CORRECTED ENVIRONMENT SELECTION LOGIC (KEPT) ***
+
+            // *** VERSION 57 - SET COOKIE WITH FULL URL AND EXPLICIT DOMAIN (KEPT) ***
+            console.log("Attempting to set acs_ngn cookie programmatically for Entitlement Check..."); // VERSION 57 - Updated Log Message (KEPT)
+            await chrome.cookies.set({
+                url: `https://${domain}`, // VERSION 57 - Use full URL for cookie setting (KEPT)
+                name: 'acs_ngn',
+                value: acs_ngn_value,
+                domain: domain, // VERSION 57 - Use exact domain (KEPT)
+                path: '/', // VERSION 57 - Explicitly set path (KEPT)
+                secure: true,
+                httpOnly: true
+            });
+            console.log("acs_ngn cookie set programmatically for Entitlement Check."); // VERSION 57 - Updated Log Message (KEPT)
+
+            // *** VERSION 57 - INCREASE DELAY TO 2000ms FOR PROD (KEPT) ***
+            const delayMilliseconds = envName === "Prod" ? 2000 : 500; // VERSION 57 - Longer delay for PROD (KEPT)
+            console.log(`VERSION 57: Delaying fetch by ${delayMilliseconds}ms...`); // VERSION 57 - Log message (KEPT)
+            await new Promise(resolve => setTimeout(resolve, delayMilliseconds)); // Introduce delay
+            console.log("VERSION 57: Delay completed. Proceeding with fetch."); // VERSION 57 - Log message (KEPT)
+            // *** END VERSION 57 - INCREASE DELAY TO 2000ms FOR PROD (KEPT) ***
+
+            const fetchOptions = { // Define fetch options to match curl request
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Cookie': cookieHeaderValue // VERSION 36 - Using ONLY acs_ngn header for PROD (KEPT)
+                    'Cookie': `acs_ngn=${acs_ngn_value}` // VERSION 57 - Use exact cookie format (KEPT)
                 },
                 body: JSON.stringify({
                     query: `query User {
@@ -151,15 +126,24 @@ async function handleCheckEntitlement() {
                 })
             };
 
+            // *** VERSION 57 - LOG REQUEST DETAILS (KEPT) ***
+            console.log("Request URL:", url); // VERSION 57 - Log request URL (KEPT)
+            console.log("Request Headers:", fetchOptions.headers); // VERSION 57 - Log request headers (KEPT)
+            console.log("Request Body:", fetchOptions.body); // VERSION 57 - Log request body (KEPT)
+
             const response = await fetch(url, fetchOptions);
             const responseText = await response.text();
+
+            // *** VERSION 57 - LOG RESPONSE DETAILS (KEPT) ***
+            console.log("Response Status:", response.status); // VERSION 57 - Log response status (KEPT)
+            console.log("Response Text:", responseText); // VERSION 57 - Log response text (KEPT)
 
             try {
                 const data = JSON.parse(responseText);
                 if (data.errors) {
                     results.push(
                         `${url}\n` +
-                        `Cookies sent: acs_ngn=${acs_ngn_value}\n` + // VERSION 36 - Updated log message (KEPT)
+                        `Cookies sent: acs_ngn=${acs_ngn_value}\n` + // VERSION 57 - Updated log message (KEPT)
                         `Status: ${response.status}\n` +
                         `Error: ${data.errors[0].message}`
                     );
@@ -173,7 +157,7 @@ async function handleCheckEntitlement() {
                     ).join('\n') || 'No subscriptions';
 
                     results.push(
-                        `Environment: ${new URL(url).hostname}\n\n` +
+                        `Environment: ${envName}\n\n` +
                         `Email: ${user.email}\n\n` +
                         `Subscriptions:\n\n${subs}\n\n`
                     );
@@ -199,16 +183,25 @@ async function handleCheckEntitlement() {
 // Handle cookie pasting
 async function handlePaste() {
     try {
-        const acs_ngn_value = localStorage.getItem('acs_ngn');
+        // Get acs_ngn from chrome.storage.local instead of localStorage
+        const { acs_ngn: acs_ngn_value } = await chrome.storage.local.get('acs_ngn');
+        
         if (acs_ngn_value) {
             const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
             const {url} = tab;
+            const domain = new URL(url).hostname;
+            
             const newCookie = {
-                url,
+                url: url,
                 name: 'acs_ngn',
                 value: acs_ngn_value,
                 path: '/',
+                domain: domain,
+                secure: true
             };
+            
+            console.log('Attempting to set cookie:', newCookie);
+            
             const cookie = await new Promise((resolve) => chrome.cookies.set(newCookie, resolve));
 
             if (cookie) {
@@ -217,13 +210,14 @@ async function handlePaste() {
                 chrome.tabs.reload(tab.id);
             } else {
                 alert('Failed to paste cookie!');
+                console.error('Failed to set cookie:', chrome.runtime.lastError);
             }
         } else {
-            alert('No cookie found in local storage!');
+            alert('No cookie found! Please copy cookies first.');
         }
     } catch (error) {
-        console.error(error);
-        alert('Error while pasting cookies:', error.message);
+        console.error('Error while pasting cookies:', error);
+        alert('Error while pasting cookies: ' + error.message);
     }
 }
 
